@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "generatedBy": "cordia",
+  "updatedAt": "2026-05-31T23:32:43.476Z",
+  "project": {
+    "id": "better-news",
+    "handle": "better-news",
+    "title": "Better News",
+    "summary": "A simple news site, which avoids the mainstream channels and introduces you to more interesting content in a rapidly evolving world.",
+    "url": "https://cordia.molten.bot/project/better-news"
+  },
+  "repo": {
+    "owner": "moltenbot000",
+    "name": "cordia-better-news",
+    "fullName": "moltenbot000/cordia-better-news"
+  }
+}
