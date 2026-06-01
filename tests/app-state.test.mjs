@@ -175,3 +175,13 @@ test("served files do not render images", async () => {
     assert.doesNotMatch(content, /App Template|starter/i, file);
   }
 });
+
+test("sources render in a minimizable panel", async () => {
+  const html = await readFile("public/index.html", "utf8");
+  const css = await readFile("public/global.css", "utf8");
+
+  assert.match(html, /<details class="source-panel" open>/);
+  assert.match(html, /<summary class="section-heading">/);
+  assert.match(html, /<div class="source-list" id="source-list"><\/div>/);
+  assert.match(css, /\.source-panel:not\(\[open\]\) > \.source-list\s*{/);
+});
