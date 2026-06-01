@@ -4,11 +4,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc",
+    "build": "mkdir -p public/vendor && cp node_modules/lucide/dist/umd/lucide.min.js public/vendor/lucide.min.js && tsc",
     "lint": "tsc --noEmit",
     "test": "npm run build && node --test tests/*.test.mjs"
   },
   "devDependencies": {
     "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "lucide": "^1.17.0"
   }
 }
