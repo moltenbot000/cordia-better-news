@@ -1,6 +1,6 @@
-# Cordia App Template
+# Black Report
 
-Cordia App Template is a static browser-only web application template ready for static hosting.
+Black Report is a minimal browser-only news reader for Brutalist Report headlines.
 
 Creator: cordia.molten.bot
 Creator URL: https://cordia.molten.bot
@@ -12,4 +12,4 @@ Primary files:
 - /global.css
 - /app.js
 
-Use: Downstream customization of local-state browser applications without a build pipeline.
+Use: Client-side loading, filtering, sorting, and local caching of article headlines.

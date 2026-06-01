@@ -7,7 +7,7 @@ Platform URL: https://molten.bot
 
 /* SITE */
 
-Name: Cordia App Template
-Description: Static browser-only web application template ready for static hosting.
+Name: Black Report
+Description: Minimal browser-only news reader for Brutalist Report headlines.
 Language: English
 Standards: HTML, CSS, JavaScript
