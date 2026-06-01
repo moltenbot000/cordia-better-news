@@ -3,6 +3,8 @@
 const googleAnalyticsId = "G-ZKTPLMMFDQ";
 const articleStorageKey = "black-report-articles";
 const sourceStorageKey = "black-report-sources";
+const maxArticleCount = 256;
+const refreshIntervalMs = 60_000;
 const directFeedUrl = "https://brutalist.report/";
 const feedUrls = [
   `https://r.jina.ai/http://r.jina.ai/http://${directFeedUrl}`,
@@ -102,8 +104,8 @@ function getElements(): AppElements {
   };
 }
 
-function createId(source: string, title: string, publishedAt: string) {
-  return `${source}:${title}:${publishedAt}`.toLowerCase();
+function createId(source: string, title: string, url: string) {
+  return `${source}:${title}:${url}`.toLowerCase();
 }
 
 function parseRelativeDate(value: string, now = new Date()): string {
@@ -165,7 +167,7 @@ export function parseArticlesFromBrutalistReport(html: string, now = new Date())
 
       const publishedAt = parseRelativeDate(relativeDate, now);
       articles.push({
-        id: createId(source, title, publishedAt),
+        id: createId(source, title, url),
         title,
         source,
         url,
@@ -195,7 +197,7 @@ function parseArticlesFromMarkdown(markdown: string, now = new Date()): Article[
 
     const publishedAt = parseRelativeDate(articleMatch[3], now);
     articles.push({
-      id: createId(source, articleMatch[1], publishedAt),
+      id: createId(source, articleMatch[1], articleMatch[2]),
       title: articleMatch[1],
       source,
       url: articleMatch[2],
@@ -224,7 +226,7 @@ export function parseStoredArticles(storedArticles: string | null): Article[] {
   try {
     const parsed = JSON.parse(storedArticles) as unknown;
     return Array.isArray(parsed) && parsed.every(isArticle)
-      ? parsed.sort((a, b) => Date.parse(b.publishedAt) - Date.parse(a.publishedAt))
+      ? limitArticles(parsed.sort((a, b) => Date.parse(b.publishedAt) - Date.parse(a.publishedAt)))
       : [];
   } catch {
     return [];
@@ -251,13 +253,48 @@ function getSources(articles: Article[]) {
 }
 
 function isSourceEnabled(source: string, preferences: SourcePreferences) {
-  return preferences[source] ?? true;
+  return preferences[source] ?? false;
 }
 
 function filteredArticles(articles: Article[], preferences: SourcePreferences) {
-  return articles
-    .filter((article) => isSourceEnabled(article.source, preferences))
-    .sort((a, b) => Date.parse(b.publishedAt) - Date.parse(a.publishedAt));
+  return limitArticles(
+    articles
+      .filter((article) => isSourceEnabled(article.source, preferences))
+      .sort((a, b) => Date.parse(b.publishedAt) - Date.parse(a.publishedAt)),
+  );
+}
+
+function limitArticles(articles: Article[]) {
+  return articles.slice(0, maxArticleCount);
+}
+
+export function mergeArticles(currentArticles: Article[], fetchedArticles: Article[]) {
+  const merged = new Map<string, Article>();
+
+  currentArticles.forEach((article) => {
+    merged.set(article.id, article);
+  });
+
+  fetchedArticles.forEach((article) => {
+    merged.set(article.id, article);
+  });
+
+  return limitArticles([...merged.values()].sort((a, b) => Date.parse(b.publishedAt) - Date.parse(a.publishedAt)));
+}
+
+function syncSourcePreferences(preferences: SourcePreferences, articles: Article[]) {
+  let changed = false;
+
+  getSources(articles).forEach((source) => {
+    if (!(source in preferences)) {
+      preferences[source] = false;
+      changed = true;
+    }
+  });
+
+  if (changed) {
+    localStorage.setItem(sourceStorageKey, JSON.stringify(preferences));
+  }
 }
 
 async function fetchFeedText(): Promise<string> {
@@ -359,8 +396,10 @@ function initializeApp() {
   const elements = getElements();
   let articles = parseStoredArticles(localStorage.getItem(articleStorageKey));
   const preferences = parseSourcePreferences(localStorage.getItem(sourceStorageKey));
+  let isRefreshing = false;
 
   function render(status = "Cached") {
+    syncSourcePreferences(preferences, articles);
     const visibleArticles = filteredArticles(articles, preferences);
     renderSources(elements, articles, preferences, () => render("Saved"));
     renderArticles(elements, visibleArticles);
@@ -368,19 +407,27 @@ function initializeApp() {
     renderIconSet();
   }
 
-  async function refreshArticles() {
-    elements.feedStatus.textContent = "Loading";
-    elements.refreshButton.disabled = true;
+  async function refreshArticles({ silent = false } = {}) {
+    if (isRefreshing) return;
+
+    isRefreshing = true;
+    if (!silent) {
+      elements.feedStatus.textContent = "Loading";
+      elements.refreshButton.disabled = true;
+    }
 
     try {
       const html = await fetchFeedText();
-      articles = parseArticlesFromBrutalistReport(html);
+      articles = mergeArticles(articles, parseArticlesFromBrutalistReport(html));
       localStorage.setItem(articleStorageKey, JSON.stringify(articles));
       render("Updated");
     } catch {
       render(articles.length > 0 ? "Offline" : "Unavailable");
     } finally {
-      elements.refreshButton.disabled = false;
+      isRefreshing = false;
+      if (!silent) {
+        elements.refreshButton.disabled = false;
+      }
       renderIconSet();
     }
   }
@@ -391,6 +438,9 @@ function initializeApp() {
 
   render(articles.length > 0 ? "Cached" : "Loading");
   void refreshArticles();
+  window.setInterval(() => {
+    void refreshArticles({ silent: true });
+  }, refreshIntervalMs);
 }
 
 if (typeof document !== "undefined") {

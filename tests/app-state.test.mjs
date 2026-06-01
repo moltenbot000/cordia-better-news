@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import {
+  mergeArticles,
   parseArticlesFromBrutalistReport,
   parseSourcePreferences,
   parseStoredArticles,
@@ -78,6 +79,19 @@ test("parseArticlesFromBrutalistReport extracts non-paywalled articles sorted by
   assert.equal(articles[0].publishedAt, "2026-06-01T11:00:00.000Z");
 });
 
+test("parseArticlesFromBrutalistReport keeps article ids stable across refreshes", () => {
+  installDomParser([
+    createSection("Slashdot", [
+      createItem(createLink("Same Slashdot story", "https://slashdot.org/story/same"), "1h"),
+    ]),
+  ]);
+
+  const first = parseArticlesFromBrutalistReport("<html></html>", new Date("2026-06-01T12:00:00.000Z"));
+  const second = parseArticlesFromBrutalistReport("<html></html>", new Date("2026-06-01T12:01:00.000Z"));
+
+  assert.equal(first[0].id, second[0].id);
+});
+
 test("parseStoredArticles returns valid articles sorted by publish date", () => {
   const stored = JSON.stringify([
     {
@@ -98,6 +112,32 @@ test("parseStoredArticles returns valid articles sorted by publish date", () => 
 
   assert.deepEqual(parseStoredArticles(stored).map((article) => article.id), ["new", "old"]);
   assert.deepEqual(parseStoredArticles("{"), []);
+});
+
+test("mergeArticles deduplicates fetched articles and keeps newest 256", () => {
+  const current = [
+    {
+      id: "same",
+      title: "Same",
+      source: "Slashdot",
+      url: "https://slashdot.org/same",
+      publishedAt: "2026-06-01T10:00:00.000Z",
+    },
+  ];
+  const fetched = Array.from({ length: 257 }, (_, index) => ({
+    id: index === 0 ? "same" : `new-${index}`,
+    title: `New ${index}`,
+    source: "Slashdot",
+    url: `https://slashdot.org/new-${index}`,
+    publishedAt: new Date(Date.UTC(2026, 5, 1, 12, 0, 0) - index * 60_000).toISOString(),
+  }));
+
+  const merged = mergeArticles(current, fetched);
+
+  assert.equal(merged.length, 256);
+  assert.equal(merged[0].id, "same");
+  assert.equal(merged[0].publishedAt, "2026-06-01T12:00:00.000Z");
+  assert.equal(merged.at(-1).id, "new-255");
 });
 
 test("parseArticlesFromBrutalistReport supports reader markdown fallback", () => {
