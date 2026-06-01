@@ -108,6 +108,42 @@ main {
   font-size: 0.85rem;
 }
 
+.source-panel {
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+}
+
+.source-panel summary.section-heading {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+}
+
+.source-panel summary {
+  cursor: pointer;
+}
+
+.source-panel summary::before {
+  content: "-";
+  color: var(--muted);
+}
+
+.source-panel:not([open]) summary::before {
+  content: "+";
+}
+
+.source-panel summary::-webkit-details-marker {
+  display: none;
+}
+
+.source-panel:not([open]) .section-heading {
+  margin-bottom: 0;
+}
+
+.source-panel:not([open]) > .source-list {
+  display: none;
+}
+
 .source-list {
   display: flex;
   flex-wrap: wrap;
@@ -192,6 +228,7 @@ main {
 
 button:focus-visible,
 a:focus-visible,
+.source-panel summary:focus-visible,
 .source-toggle:focus-within {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
