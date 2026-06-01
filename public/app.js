@@ -10,6 +10,32 @@ const feedUrls = [
     `https://r.jina.ai/http://r.jina.ai/http://${directFeedUrl}`,
     `https://api.allorigins.win/raw?url=${encodeURIComponent(directFeedUrl)}`,
 ];
+const removedSources = new Set([
+    "abcnews",
+    "cnbc",
+    "cnet",
+    "coindesk",
+    "foxnews",
+    "nbcnews",
+    "yahoofinance",
+    "yahoosports",
+    "thehill",
+    "tmz",
+    "thepointsguy",
+]);
+const removedSourceHosts = [
+    "abcnews.go.com",
+    "cnbc.com",
+    "cnet.com",
+    "coindesk.com",
+    "foxnews.com",
+    "nbcnews.com",
+    "finance.yahoo.com",
+    "sports.yahoo.com",
+    "thehill.com",
+    "tmz.com",
+    "thepointsguy.com",
+];
 const paywalledSources = new Set([
     "barron's",
     "bloomberg",
@@ -93,10 +119,20 @@ function getHost(url) {
         return "";
     }
 }
+function normalizeSource(source) {
+    return source.trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+function isRemovedSource(source, url) {
+    const host = getHost(url);
+    return removedSources.has(normalizeSource(source)) || removedSourceHosts.some((removedHost) => host.endsWith(removedHost));
+}
 function isPaywalled(source, url) {
     const normalizedSource = source.trim().toLowerCase();
     const host = getHost(url);
     return paywalledSources.has(normalizedSource) || paywalledHosts.some((paywallHost) => host.endsWith(paywallHost));
+}
+function shouldIncludeArticle(source, url) {
+    return !isRemovedSource(source, url) && !isPaywalled(source, url);
 }
 export function parseArticlesFromBrutalistReport(html, now = new Date()) {
     if (html.includes("Markdown Content:")) {
@@ -107,8 +143,12 @@ export function parseArticlesFromBrutalistReport(html, now = new Date()) {
     document.querySelectorAll("h3").forEach((heading) => {
         const source = heading.textContent?.trim();
         const list = heading.nextElementSibling;
-        if (!source || !(list instanceof HTMLUListElement) || paywalledSources.has(source.toLowerCase()))
+        if (!source ||
+            !(list instanceof HTMLUListElement) ||
+            removedSources.has(normalizeSource(source)) ||
+            paywalledSources.has(source.toLowerCase())) {
             return;
+        }
         list.querySelectorAll("li").forEach((item) => {
             const link = item.querySelector("a[href]");
             if (!(link instanceof HTMLAnchorElement))
@@ -116,7 +156,7 @@ export function parseArticlesFromBrutalistReport(html, now = new Date()) {
             const title = link.textContent?.trim();
             const relativeDate = item.textContent?.match(/\[(\d+\s*[mhdw])\]/i)?.[1];
             const url = link.href;
-            if (!title || !relativeDate || isPaywalled(source, url))
+            if (!title || !relativeDate || !shouldIncludeArticle(source, url))
                 return;
             const publishedAt = parseRelativeDate(relativeDate, now);
             articles.push({
@@ -140,7 +180,7 @@ function parseArticlesFromMarkdown(markdown, now = new Date()) {
             return;
         }
         const articleMatch = line.match(/^\*\s+\[(.+)\]\((https?:\/\/[^)]+)\)\s+\[(\d+\s*[mhdw])\]/i);
-        if (!source || !articleMatch?.[1] || !articleMatch[2] || !articleMatch[3] || isPaywalled(source, articleMatch[2])) {
+        if (!source || !articleMatch?.[1] || !articleMatch[2] || !articleMatch[3] || !shouldIncludeArticle(source, articleMatch[2])) {
             return;
         }
         const publishedAt = parseRelativeDate(articleMatch[3], now);

@@ -79,6 +79,61 @@ test("parseArticlesFromBrutalistReport extracts non-paywalled articles sorted by
   assert.equal(articles[0].publishedAt, "2026-06-01T11:00:00.000Z");
 });
 
+test("parseArticlesFromBrutalistReport removes blocked news sources and their domains", () => {
+  installDomParser([
+    createSection("ABC News", [
+      createItem(createLink("Blocked ABC story", "https://abcnews.go.com/story"), "15m"),
+    ]),
+    createSection("Hacker News", [
+      createItem(createLink("Blocked CNBC story", "https://www.cnbc.com/2026/06/01/story.html"), "30m"),
+      createItem(createLink("Allowed HN story", "https://example.com/story"), "45m"),
+    ]),
+    createSection("COIN DESK", [
+      createItem(createLink("Blocked crypto story", "https://www.coindesk.com/story"), "1h"),
+    ]),
+  ]);
+
+  const articles = parseArticlesFromBrutalistReport(
+    "<html></html>",
+    new Date("2026-06-01T12:00:00.000Z"),
+  );
+
+  assert.deepEqual(
+    articles.map((article) => article.title),
+    ["Allowed HN story"],
+  );
+});
+
+test("parseArticlesFromBrutalistReport includes requested technology sources", () => {
+  installDomParser([
+    createSection("ArsTechnica", [
+      createItem(createLink("Ars story", "https://arstechnica.com/story"), "10m"),
+    ]),
+    createSection("The Register", [
+      createItem(createLink("Register story", "https://www.theregister.com/story"), "20m"),
+    ]),
+    createSection("Linux Weekly News", [
+      createItem(createLink("LWN story", "https://lwn.net/story"), "30m"),
+    ]),
+    createSection("Techmeme", [
+      createItem(createLink("Techmeme story", "https://www.techmeme.com/story"), "40m"),
+    ]),
+    createSection("Bleeping Computer", [
+      createItem(createLink("Bleeping story", "https://www.bleepingcomputer.com/story"), "50m"),
+    ]),
+  ]);
+
+  const articles = parseArticlesFromBrutalistReport(
+    "<html></html>",
+    new Date("2026-06-01T12:00:00.000Z"),
+  );
+
+  assert.deepEqual(
+    articles.map((article) => article.source),
+    ["ArsTechnica", "The Register", "Linux Weekly News", "Techmeme", "Bleeping Computer"],
+  );
+});
+
 test("parseArticlesFromBrutalistReport keeps article ids stable across refreshes", () => {
   installDomParser([
     createSection("Slashdot", [
