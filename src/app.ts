@@ -5,10 +5,18 @@ const articleStorageKey = "black-report-articles";
 const sourceStorageKey = "black-report-sources";
 const maxArticleCount = 256;
 const refreshIntervalMs = 60_000;
+const feedRequestTimeoutMs = 8_000;
 const directFeedUrl = "https://brutalist.report/";
+const electrekSource = "Electrek";
+const electrekFeedUrl = "https://electrek.co/feed/";
 const feedUrls = [
   `https://r.jina.ai/http://r.jina.ai/http://${directFeedUrl}`,
   `https://api.allorigins.win/raw?url=${encodeURIComponent(directFeedUrl)}`,
+];
+const electrekFeedUrls = [
+  `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(electrekFeedUrl)}`,
+  `https://api.allorigins.win/raw?url=${encodeURIComponent(electrekFeedUrl)}`,
+  electrekFeedUrl,
 ];
 
 const removedSources = new Set([
@@ -256,6 +264,30 @@ function parseArticlesFromMarkdown(markdown: string, now = new Date()): Article[
   return articles.sort((a, b) => Date.parse(b.publishedAt) - Date.parse(a.publishedAt));
 }
 
+export function parseArticlesFromElectrekFeed(xml: string): Article[] {
+  const document = new DOMParser().parseFromString(xml, "text/xml");
+  const articles: Article[] = [];
+
+  document.querySelectorAll("item").forEach((item) => {
+    const title = item.querySelector("title")?.textContent?.trim();
+    const url = item.querySelector("link")?.textContent?.trim();
+    const pubDate = item.querySelector("pubDate")?.textContent?.trim();
+    const publishedTime = pubDate ? Date.parse(pubDate) : NaN;
+
+    if (!title || !url || Number.isNaN(publishedTime)) return;
+
+    articles.push({
+      id: createId(electrekSource, title, url),
+      title,
+      source: electrekSource,
+      url,
+      publishedAt: new Date(publishedTime).toISOString(),
+    });
+  });
+
+  return articles.sort((a, b) => Date.parse(b.publishedAt) - Date.parse(a.publishedAt));
+}
+
 function isArticle(value: unknown): value is Article {
   if (!value || typeof value !== "object") return false;
   const article = value as Record<string, unknown>;
@@ -345,17 +377,49 @@ function syncSourcePreferences(preferences: SourcePreferences, articles: Article
   }
 }
 
-async function fetchFeedText(): Promise<string> {
-  for (const url of feedUrls) {
+async function fetchText(urls: string[], errorMessage: string): Promise<string> {
+  for (const url of urls) {
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), feedRequestTimeoutMs);
+
     try {
-      const response = await fetch(url, { cache: "no-store" });
+      const response = await fetch(url, { cache: "no-store", signal: controller.signal });
       if (response.ok) return await response.text();
     } catch {
       continue;
+    } finally {
+      window.clearTimeout(timeoutId);
     }
   }
 
-  throw new Error("Unable to load Brutalist Report");
+  throw new Error(errorMessage);
+}
+
+async function fetchLatestArticles(): Promise<Article[]> {
+  const articles: Article[] = [];
+  let loadedSourceCount = 0;
+
+  try {
+    const html = await fetchText(feedUrls, "Unable to load Brutalist Report");
+    articles.push(...parseArticlesFromBrutalistReport(html));
+    loadedSourceCount += 1;
+  } catch {
+    // Keep other news sources available when one feed is offline.
+  }
+
+  try {
+    const xml = await fetchText(electrekFeedUrls, "Unable to load Electrek");
+    articles.push(...parseArticlesFromElectrekFeed(xml));
+    loadedSourceCount += 1;
+  } catch {
+    // Keep other news sources available when one feed is offline.
+  }
+
+  if (loadedSourceCount === 0) {
+    throw new Error("Unable to load news feeds");
+  }
+
+  return articles.sort((a, b) => Date.parse(b.publishedAt) - Date.parse(a.publishedAt));
 }
 
 function formatPublishedAt(value: string) {
@@ -465,8 +529,7 @@ function initializeApp() {
     }
 
     try {
-      const html = await fetchFeedText();
-      articles = mergeArticles(articles, parseArticlesFromBrutalistReport(html));
+      articles = mergeArticles(articles, await fetchLatestArticles());
       localStorage.setItem(articleStorageKey, JSON.stringify(articles));
       render("Updated");
     } catch {
