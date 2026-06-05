@@ -4,6 +4,7 @@ import test from "node:test";
 
 import {
   mergeArticles,
+  parseArticlesFromElectrekFeed,
   parseArticlesFromBrutalistReport,
   parseSourcePreferences,
   parseStoredArticles,
@@ -49,6 +50,28 @@ function installDomParser(sections) {
       return {
         querySelectorAll(selector) {
           return selector === "h3" ? sections.map((section) => section.heading) : [];
+        },
+      };
+    }
+  };
+}
+
+function createFeedItem({ title, link, pubDate }) {
+  return {
+    querySelector(selector) {
+      const values = { title, link, pubDate };
+      const textContent = values[selector];
+      return textContent ? { textContent } : null;
+    },
+  };
+}
+
+function installFeedParser(items) {
+  global.DOMParser = class {
+    parseFromString() {
+      return {
+        querySelectorAll(selector) {
+          return selector === "item" ? items : [];
         },
       };
     }
@@ -132,6 +155,33 @@ test("parseArticlesFromBrutalistReport includes requested technology sources", (
     articles.map((article) => article.source),
     ["ArsTechnica", "The Register", "Linux Weekly News", "Techmeme", "Bleeping Computer"],
   );
+});
+
+test("parseArticlesFromElectrekFeed extracts Electrek RSS items sorted by publish date", () => {
+  installFeedParser([
+    createFeedItem({
+      title: "Older EV story",
+      link: "https://electrek.co/2026/06/01/older-ev-story/",
+      pubDate: "Mon, 01 Jun 2026 10:00:00 +0000",
+    }),
+    createFeedItem({
+      title: "Newest EV story",
+      link: "https://electrek.co/2026/06/01/newest-ev-story/",
+      pubDate: "Mon, 01 Jun 2026 12:00:00 +0000",
+    }),
+  ]);
+
+  const articles = parseArticlesFromElectrekFeed("<rss></rss>");
+
+  assert.deepEqual(
+    articles.map((article) => article.title),
+    ["Newest EV story", "Older EV story"],
+  );
+  assert.deepEqual(
+    articles.map((article) => article.source),
+    ["Electrek", "Electrek"],
+  );
+  assert.equal(articles[0].publishedAt, "2026-06-01T12:00:00.000Z");
 });
 
 test("parseArticlesFromBrutalistReport keeps article ids stable across refreshes", () => {
